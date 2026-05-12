@@ -4,7 +4,12 @@ Sample YouTube search results for a list of queries.
 
 Usage:
   export YOUTUBE_API_KEY="your_key"
-  python scripts/youtube_search_sampler.py --queries data/seed_queries.csv --out data/youtube_sample.csv --max-results 25
+  python scripts/youtube_search_sampler.py --queries data/seed_queries.csv --out data/youtube_sample.csv --max-results 25 --max-queries 3
+
+Quota note:
+  YouTube Data API search.list costs quota per query request. Reducing
+  --max-results does not reduce the number of search calls; reducing
+  --max-queries does.
 """
 
 import argparse
@@ -12,16 +17,20 @@ import csv
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Dict, Iterable, List
+from pathlib import Path
+from typing import Dict, List
 
 import requests
 from dotenv import load_dotenv
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_QUERIES = REPO_ROOT / "data" / "seed_queries.csv"
+DEFAULT_OUT = REPO_ROOT / "data" / "youtube_sample.csv"
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 
 
-def read_queries(path: str) -> List[Dict[str, str]]:
+def read_queries(path: Path) -> List[Dict[str, str]]:
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         if "query" not in reader.fieldnames:
@@ -38,24 +47,58 @@ def search_youtube(api_key: str, query: str, max_results: int) -> List[Dict]:
         "key": api_key,
     }
     response = requests.get(YOUTUBE_SEARCH_URL, params=params, timeout=30)
+
+    if response.status_code == 403:
+        try:
+            payload = response.json()
+            errors = payload.get("error", {}).get("errors", [])
+            reasons = {error.get("reason") for error in errors}
+            if "quotaExceeded" in reasons:
+                raise RuntimeError(
+                    "YouTube API quota exceeded. This is quota-unit exhaustion, "
+                    "not a normal billing-credit issue. Wait for quota reset, "
+                    "reduce --max-queries, reuse an existing sample with --skip-search, "
+                    "or request a YouTube Data API quota increase."
+                )
+        except ValueError:
+            pass
+
     response.raise_for_status()
     return response.json().get("items", [])
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--queries", default="data/seed_queries.csv")
-    parser.add_argument("--out", default="data/youtube_sample.csv")
+    parser.add_argument("--queries", type=Path, default=DEFAULT_QUERIES)
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--max-results", type=int, default=25)
+    parser.add_argument(
+        "--max-queries",
+        type=int,
+        default=None,
+        help="Limit how many search phrases are sent to YouTube. This is the main quota-saving option.",
+    )
     args = parser.parse_args()
 
-    load_dotenv()
+    load_dotenv(REPO_ROOT / ".env")
     api_key = os.getenv("YOUTUBE_API_KEY")
     if not api_key:
         print("Missing YOUTUBE_API_KEY environment variable.", file=sys.stderr)
         return 2
 
     queries = read_queries(args.queries)
+    if args.max_queries is not None:
+        queries = queries[: args.max_queries]
+
+    if not queries:
+        print("No queries to run.", file=sys.stderr)
+        return 2
+
+    print(
+        f"Running {len(queries)} YouTube search request(s). "
+        "To conserve quota, lower --max-queries or use run_pipeline.py --skip-search."
+    )
+
     rows = []
     collected_at = datetime.now(timezone.utc).isoformat()
 
@@ -65,6 +108,9 @@ def main() -> int:
         print(f"Searching: {query}")
         try:
             items = search_youtube(api_key, query, args.max_results)
+        except RuntimeError as exc:
+            print(f"Quota/error searching {query!r}: {exc}", file=sys.stderr)
+            break
         except Exception as exc:
             print(f"Error searching {query!r}: {exc}", file=sys.stderr)
             continue
@@ -97,7 +143,7 @@ def main() -> int:
         "url","publish_date","description","audience","content_angle","format",
         "cluster","quality_notes","gap_notes","differentiation_notes"
     ]
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
