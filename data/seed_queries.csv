@@ -1,0 +1,20 @@
+query,category,notes
+career advice for young adults,direct,broad audience phrase
+career coaching for young adults,direct,service phrase
+career mentor for young adults,direct,mentorship phrase
+career advice after college,college_to_career,common transition phrase
+what to do after college,college_to_career,problem phrase
+first job career advice,first_job,early workplace
+entry level career advice,first_job,job search and first role
+resume tips for college graduates,task,resume
+LinkedIn tips for recent graduates,task,LinkedIn
+interview tips for first job,task,interview
+I don't know what career I want,uncertainty,high emotional intent
+how to choose a career path,uncertainty,decision support
+career anxiety after college,uncertainty,emotional/life stage
+quarter life crisis career,uncertainty,adjacent phrase
+how to find a career mentor,mentorship,mentor search
+workplace advice for young professionals,workplace,soft skills
+how to talk to your manager,workplace,communication
+how to survive your first corporate job,workplace,first-job survival
+career change in your 20s,adjacent,early career pivot
