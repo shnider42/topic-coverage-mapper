@@ -6,7 +6,8 @@ analysis summary, and the cluster scorecard.
 Intended pipeline:
   1. python scripts/youtube_search_sampler.py
   2. python scripts/analyze_samples.py
-  3. python scripts/build_client_report.py
+  3. python scripts/generate_cluster_scores.py
+  4. python scripts/build_client_report.py
 """
 
 import argparse
@@ -19,7 +20,7 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SAMPLE = REPO_ROOT / "data" / "youtube_sample.csv"
 DEFAULT_SUMMARY = REPO_ROOT / "sample-outputs" / "generated-summary.md"
-DEFAULT_SCORES = REPO_ROOT / "data" / "example_cluster_scores.csv"
+DEFAULT_SCORES = REPO_ROOT / "data" / "cluster_scores.csv"
 DEFAULT_OUT = REPO_ROOT / "sample-outputs" / "client-report-generated.md"
 
 
@@ -64,7 +65,7 @@ def append_sample_snapshot(lines: list[str], sample: pd.DataFrame, sample_path: 
         lines.extend([channel_counts.to_markdown(index=False), ""])
 
     if "cluster" in sample and sample["cluster"].notna().any():
-        lines.extend(["### Rows by cluster", ""])
+        lines.extend(["### Rows by manually assigned cluster", ""])
         cluster_counts = sample["cluster"].fillna("Unclustered").value_counts().reset_index()
         cluster_counts.columns = ["cluster", "rows"]
         lines.extend([cluster_counts.to_markdown(index=False), ""])
@@ -155,7 +156,7 @@ def main() -> int:
             "",
             f"No scorecard found at `{args.scores}`.",
             "",
-            "Create a cluster score CSV or pass `--scores path/to/scores.csv`.",
+            "Run `python scripts/generate_cluster_scores.py` first, or pass `--scores path/to/scores.csv`.",
             "",
         ])
     else:
@@ -167,13 +168,14 @@ def main() -> int:
         "- This is not a complete census of YouTube.",
         "- Search surfaces shift over time.",
         "- View count and ranking are directional signals, not proof of demand or fit.",
+        "- Auto-generated cluster scores are first-pass heuristics and should be manually reviewed before client delivery.",
         "- Manual qualitative review is still needed before final recommendations.",
         "",
         "## Suggested next steps",
         "",
         "1. Review repeated channels and repeated themes.",
         "2. Manually tag audience, content angle, format, and cluster fields in the sample CSV.",
-        "3. Update the cluster scorecard based on the actual sample.",
+        "3. Review and edit the generated cluster scorecard based on the actual sample.",
         "4. Re-run this report builder.",
         "5. Convert the strongest gaps into client-facing positioning and content experiments.",
     ])
