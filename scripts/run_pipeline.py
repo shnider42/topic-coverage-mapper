@@ -48,7 +48,13 @@ def main() -> int:
         "--max-results",
         type=int,
         default=5,
-        help="Number of YouTube search results per query. Start small to conserve quota.",
+        help="Number of YouTube results per query. This affects row count, not search-call quota.",
+    )
+    parser.add_argument(
+        "--max-queries",
+        type=int,
+        default=3,
+        help="Number of search phrases to send to YouTube. This is the main quota-saving option.",
     )
     parser.add_argument(
         "--skip-search",
@@ -71,6 +77,8 @@ def main() -> int:
                 str(args.sample),
                 "--max-results",
                 str(args.max_results),
+                "--max-queries",
+                str(args.max_queries),
             ],
         )
     else:
