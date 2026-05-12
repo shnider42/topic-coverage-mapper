@@ -29,6 +29,16 @@ DEFAULT_QUERIES = REPO_ROOT / "data" / "seed_queries.csv"
 DEFAULT_OUT = REPO_ROOT / "data" / "youtube_sample.csv"
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 
+FIELDNAMES = [
+    "collected_at", "query", "query_category", "platform", "rank", "title", "channel",
+    "url", "publish_date", "description", "audience", "content_angle", "format",
+    "cluster", "quality_notes", "gap_notes", "differentiation_notes"
+]
+
+
+class YouTubeQuotaExceeded(RuntimeError):
+    """Raised when YouTube returns quotaExceeded."""
+
 
 def read_queries(path: Path) -> List[Dict[str, str]]:
     with open(path, newline="", encoding="utf-8") as f:
@@ -54,10 +64,10 @@ def search_youtube(api_key: str, query: str, max_results: int) -> List[Dict]:
             errors = payload.get("error", {}).get("errors", [])
             reasons = {error.get("reason") for error in errors}
             if "quotaExceeded" in reasons:
-                raise RuntimeError(
+                raise YouTubeQuotaExceeded(
                     "YouTube API quota exceeded. This is quota-unit exhaustion, "
                     "not a normal billing-credit issue. Wait for quota reset, "
-                    "reduce --max-queries, reuse an existing sample with --skip-search, "
+                    "reuse an existing sample with run_pipeline.py --skip-search, "
                     "or request a YouTube Data API quota increase."
                 )
         except ValueError:
@@ -65,6 +75,14 @@ def search_youtube(api_key: str, query: str, max_results: int) -> List[Dict]:
 
     response.raise_for_status()
     return response.json().get("items", [])
+
+
+def write_rows(out_path: Path, rows: List[Dict[str, str]]) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def main() -> int:
@@ -77,6 +95,11 @@ def main() -> int:
         type=int,
         default=None,
         help="Limit how many search phrases are sent to YouTube. This is the main quota-saving option.",
+    )
+    parser.add_argument(
+        "--write-empty-on-error",
+        action="store_true",
+        help="Write an empty output CSV even if quota/API errors prevent collecting rows. Off by default to avoid overwriting useful samples.",
     )
     args = parser.parse_args()
 
@@ -101,6 +124,7 @@ def main() -> int:
 
     rows = []
     collected_at = datetime.now(timezone.utc).isoformat()
+    quota_exceeded = False
 
     for qrow in queries:
         query = qrow["query"]
@@ -108,8 +132,9 @@ def main() -> int:
         print(f"Searching: {query}")
         try:
             items = search_youtube(api_key, query, args.max_results)
-        except RuntimeError as exc:
+        except YouTubeQuotaExceeded as exc:
             print(f"Quota/error searching {query!r}: {exc}", file=sys.stderr)
+            quota_exceeded = True
             break
         except Exception as exc:
             print(f"Error searching {query!r}: {exc}", file=sys.stderr)
@@ -138,18 +163,20 @@ def main() -> int:
                 "differentiation_notes": "",
             })
 
-    fieldnames = [
-        "collected_at","query","query_category","platform","rank","title","channel",
-        "url","publish_date","description","audience","content_angle","format",
-        "cluster","quality_notes","gap_notes","differentiation_notes"
-    ]
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    with open(args.out, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
+    if not rows and quota_exceeded and not args.write_empty_on_error:
+        print(
+            "No rows collected because quota is exhausted. Existing sample file was not overwritten. "
+            "Run `python scripts/run_pipeline.py --skip-search` to reuse an existing sample, "
+            "or try again after quota resets.",
+            file=sys.stderr,
+        )
+        return 3
 
+    write_rows(args.out, rows)
     print(f"Wrote {len(rows)} rows to {args.out}")
+
+    if quota_exceeded:
+        return 3
     return 0
 
 
