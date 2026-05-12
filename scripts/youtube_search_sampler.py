@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from typing import Dict, Iterable, List
 
 import requests
+from dotenv import load_dotenv
+
 
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 
@@ -47,6 +49,7 @@ def main() -> int:
     parser.add_argument("--max-results", type=int, default=25)
     args = parser.parse_args()
 
+    load_dotenv()
     api_key = os.getenv("YOUTUBE_API_KEY")
     if not api_key:
         print("Missing YOUTUBE_API_KEY environment variable.", file=sys.stderr)
