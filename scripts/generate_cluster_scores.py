@@ -17,6 +17,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SAMPLE = REPO_ROOT / "data" / "youtube_sample.csv"
 DEFAULT_OUT = REPO_ROOT / "data" / "cluster_scores.csv"
 
+OUTPUT_COLUMNS = [
+    "cluster", "sample_rows", "unique_videos", "unique_channels", "top_query",
+    "supply", "demand_signal", "quality_gap", "freshness_gap", "distinctiveness",
+    "client_fit", "opportunity_score", "notes"
+]
+
 CLUSTER_RULES = [
     ("Resume tips", ["resume", "cv"]),
     ("LinkedIn tips", ["linkedin", "linked in"]),
@@ -104,11 +110,38 @@ def infer_cluster(row: pd.Series) -> str:
     return "Other / uncategorized"
 
 
+def empty_scorecard(note: str) -> pd.DataFrame:
+    return pd.DataFrame([{
+        "cluster": "No sample rows",
+        "sample_rows": 0,
+        "unique_videos": 0,
+        "unique_channels": 0,
+        "top_query": "",
+        "supply": 0,
+        "demand_signal": 0,
+        "quality_gap": 0,
+        "freshness_gap": 0,
+        "distinctiveness": 0,
+        "client_fit": 0,
+        "opportunity_score": 0,
+        "notes": note,
+    }], columns=OUTPUT_COLUMNS)
+
+
 def build_scorecard(sample: pd.DataFrame) -> pd.DataFrame:
+    if sample.empty:
+        return empty_scorecard(
+            "No YouTube sample rows found. Run youtube_search_sampler.py after quota resets, or restore a non-empty sample CSV."
+        )
+
     sample = sample.copy()
     sample["derived_cluster"] = sample.apply(infer_cluster, axis=1)
 
-    max_rows = int(sample["derived_cluster"].value_counts().max())
+    counts = sample["derived_cluster"].value_counts()
+    if counts.empty:
+        return empty_scorecard("No derived clusters found in the sample CSV.")
+
+    max_rows = int(counts.max())
     rows = []
 
     for cluster, group in sample.groupby("derived_cluster"):
@@ -152,7 +185,7 @@ def build_scorecard(sample: pd.DataFrame) -> pd.DataFrame:
             "notes": "Auto-generated first-pass score. Review manually before client delivery.",
         })
 
-    return pd.DataFrame(rows).sort_values(
+    return pd.DataFrame(rows, columns=OUTPUT_COLUMNS).sort_values(
         ["opportunity_score", "sample_rows"], ascending=[False, False]
     )
 
